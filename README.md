@@ -11,40 +11,73 @@ It unifies syntax checking, Rust-powered static analysis, unit testing, 404 brok
 
 ---
 
-## Quick Start (1-Minute Setup)
+## 🚀 How to Use (3 Common Real-World Scenarios)
 
-No heavy installation required. Run directly with Python:
+### Scenario 1: Auditing Any Project Folder on Your Desktop / PC
+You don't need to move your projects. You can audit any project folder from anywhere:
 
+**Using the 1-Click Menu (Windows):**
+1. Double-click `run_audit.bat`.
+2. Choose **`[4] CUSTOM`**.
+3. Paste the path to your project (for example `C:\Projects\MyProject`) and press Enter!
+
+**Using the Command Line:**
 ```bash
-# 1. Audit current directory
-python repo_quality_guard.py .
-
-# 2. Audit specific project folder
-python repo_quality_guard.py /path/to/project
-
-# 3. Batch scan all repositories in a workspace
-python repo_quality_guard.py --all
-
-# 4. Auto-fix autofixable lints (Ruff & Biome)
-python repo_quality_guard.py . --fix
-
-# 5. Interactive Tool Doctor (Check & Install Missing Tools)
-python repo_quality_guard.py --doctor
+python repo_quality_guard.py "C:\Projects\MyProject"
 ```
-
-### Windows 1-Click Run
-Double-click `run_audit.bat` to launch the interactive audit console.
 
 ---
 
-## Interactive Tool Doctor & Setup Helper
+### Scenario 2: Drop Directly into Any Repo (Zero Setup)
+Simply copy `repo_quality_guard.py` and `run_audit.bat` into any project folder.
+Double-click `run_audit.bat` and press **`[1]`** to audit that repository in 2 seconds.
 
-Repo Quality Guard includes an interactive **Tool Doctor** (`--doctor` or `--setup`).
+---
 
-It scans your system for recommended quality tools, explains the specific engineering benefit of each tool, and gives you a clear choice:
-1. **Auto-Install Missing Tools**: Automatically installs recommended pip and npm packages.
-2. **Selective Install**: Interactively asks which specific tools you wish to enable.
-3. **Graceful Skip**: Continue with your existing tools without installing anything.
+### Scenario 3: Automated GitHub CI (Run on Every Git Push)
+To automatically run Repo Quality Guard on GitHub whenever you push code or open a pull request, create `.github/workflows/quality.yml` in your repository:
+
+```yaml
+name: Repo Quality Guard
+
+on: [push, pull_request]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Rust Tools
+        run: pip install ruff fixmyslop pytest
+      - name: Run Quality Audit
+        run: python repo_quality_guard.py .
+```
+Every push will now automatically get verified and receive a green checkmark `✔` on GitHub!
+
+---
+
+## The Interactive 1-Click Console
+
+When running `run_audit.bat`, you get a clear, glitch-free menu:
+
+```text
+========================================================================
+    REPO QUALITY GUARD — 1-Click Code Quality & Health Auditor
+========================================================================
+
+  What do you want to test today?
+
+  [1] QUICK AUDIT: Test current folder (Fast & Safe, Read-Only)
+  [2] AUTO-FIX:    Test & automatically fix format errors (--fix)
+  [3] MULTI-REPO:  Scan all projects in this workspace at once
+  [4] CUSTOM:      Enter any specific folder path on your PC
+  [5] TOOL DOCTOR: Check missing tools & install them interactively
+  [6] EXIT
+========================================================================
+```
 
 ---
 
@@ -61,28 +94,22 @@ It scans your system for recommended quality tools, explains the specific engine
 
 ---
 
+## Interactive Tool Doctor & Setup Helper
+
+Repo Quality Guard includes an interactive **Tool Doctor** (`--doctor` or `--setup` or menu option `[5]`).
+
+It scans your system for recommended tools, explains the specific engineering benefit of each tool, and gives you a clear choice:
+1. **Auto-Install Missing Tools**: Automatically installs recommended pip and npm packages.
+2. **Selective Install**: Interactively asks which specific tools you wish to enable.
+3. **Graceful Skip**: Continue with your existing tools without installing anything.
+
+---
+
 ## Why Repo Quality Guard?
 
 - **Low-Spec Friendly**: Designed to run seamlessly on machines with limited RAM (4GB–8GB) where heavy Docker containers or browser-based test runners choke system resources.
 - **100% Local & Private**: Never uploads your code, metrics, or telemetry to external servers. All checks run locally on your hardware.
 - **Graceful Tool Fallback**: Missing optional tools (e.g. Biome, FixMySlop, or Gradle) are gracefully skipped with informational notices instead of breaking your run.
-
----
-
-## Optional Recommended Tools
-
-For the best experience, install the blazing-fast Rust tools globally:
-
-```bash
-# Python linter (<15ms)
-pip install ruff pytest
-
-# Web linter (<35ms)
-npm install -g @biomejs/biome
-
-# Code smell & slop scanner
-pip install fixmyslop
-```
 
 ---
 
