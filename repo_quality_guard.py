@@ -265,10 +265,10 @@ def check_web(repo_path, fix=False):
     if not biome:
         return "SKIP", f"{len(web_files)} web file(s) present (Biome not installed)"
 
-    cmd = [biome, "lint", "--diagnostic-level=error", str(repo_path)]
+    cmd = [biome, "lint", "--diagnostic-level=error", "."]
     if fix:
-        cmd = [biome, "lint", "--write", "--diagnostic-level=error", str(repo_path)]
-    code, out = run_cmd(cmd)
+        cmd = [biome, "lint", "--write", "--diagnostic-level=error", "."]
+    code, out = run_cmd(cmd, cwd=repo_path)
     if code != 0 and out:
         clean_out = out.encode("ascii", errors="replace").decode("ascii")
         lines = [l.strip() for l in clean_out.splitlines() if l.strip()]
@@ -305,7 +305,7 @@ def check_slop(repo_path):
     if not fixmyslop:
         return "SKIP", "FixMySlop not installed (Optional check skipped)"
 
-    code, _ = run_cmd([fixmyslop, "scan", str(repo_path), "--fail-on", "medium"])
+    code, _ = run_cmd([fixmyslop, "scan", ".", "--fail-on", "medium"], cwd=repo_path)
     if code == 0:
         return "PASS", "Grade A (0 anti-patterns or code smells)"
     return "FAIL", "Detected excessive code smells or AI anti-patterns"
@@ -333,7 +333,12 @@ def check_broken_assets(repo_path):
             except (OSError, UnicodeDecodeError):
                 continue
 
+            is_js = f.suffix.lower() == ".js"
             for match in LINK_ATTR_RE.finditer(content):
+                # In JS files, skip url(...) function calls like new URL(a.href)
+                if is_js and match.group(2) is not None:
+                    continue
+
                 target = match.group(1) or match.group(2)
                 if not target:
                     continue
@@ -344,6 +349,24 @@ def check_broken_assets(repo_path):
 
                 clean_target = target.split("?")[0].split("#")[0].strip()
                 if not clean_target:
+                    continue
+
+                # Skip template tokens (e.g. __CATID__, {{ROOT}})
+                if "__" in clean_target or "{{" in clean_target or "}}" in clean_target:
+                    continue
+
+                # Skip JS variable / property expressions
+                if re.match(r'^[a-zA-Z_$][a-zA-Z0-9_$]*\.(href|src|url)$', clean_target):
+                    continue
+
+                # Must look like a real path or file (contains slash or valid file extension)
+                has_ext = bool(re.search(r'\.[a-zA-Z0-9]{1,8}$', clean_target))
+                has_slash = "/" in clean_target or "\\" in clean_target
+                if not (has_ext or has_slash):
+                    continue
+
+                # Skip common MIME types
+                if any(clean_target.startswith(m) for m in ("image/", "video/", "audio/", "text/", "application/", "font/")):
                     continue
 
                 resolved_relative = (f.parent / clean_target).resolve()
