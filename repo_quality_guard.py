@@ -84,6 +84,117 @@ def find_tool(name):
     return None
 
 # ==============================================================================
+# INTERACTIVE SETUP & DOCTOR HELPER
+# ==============================================================================
+RECOMMENDED_TOOLS = [
+    {
+        "id": "ruff",
+        "name": "Ruff",
+        "type": "pip",
+        "package": "ruff",
+        "benefit": "Rust-powered Python linter and formatter. Scans entire codebases in <15ms.",
+        "install_cmd": [sys.executable, "-m", "pip", "install", "--upgrade", "ruff"]
+    },
+    {
+        "id": "biome",
+        "name": "Biome",
+        "type": "npm",
+        "package": "@biomejs/biome",
+        "benefit": "Rust-powered web linter for JS, TS, HTML, CSS. Catches web syntax bugs in <35ms.",
+        "install_cmd": ["npm", "install", "-g", "@biomejs/biome"]
+    },
+    {
+        "id": "fixmyslop",
+        "name": "FixMySlop",
+        "type": "pip",
+        "package": "fixmyslop",
+        "benefit": "Anti-slop quality scanner. Eliminates AI-generated code bloat and code smells.",
+        "install_cmd": [sys.executable, "-m", "pip", "install", "--upgrade", "fixmyslop"]
+    },
+    {
+        "id": "pytest",
+        "name": "Pytest",
+        "type": "pip",
+        "package": "pytest",
+        "benefit": "Industry-standard automated test suite runner for Python repositories.",
+        "install_cmd": [sys.executable, "-m", "pip", "install", "--upgrade", "pytest"]
+    }
+]
+
+def run_doctor():
+    print(f"\n{BOLD}{CYAN}======================================================================{RESET}")
+    print(f"{BOLD}           REPO QUALITY GUARD — TOOL DOCTOR & SETUP HELPER{RESET}")
+    print(f"{BOLD}{CYAN}======================================================================{RESET}\n")
+    print("This helper checks for recommended tools and gives you the option to install them.\n")
+
+    has_npm = shutil.which("npm") is not None
+    missing_tools = []
+
+    for item in RECOMMENDED_TOOLS:
+        is_installed = False
+        if item["id"] == "pytest":
+            is_installed = importlib.util.find_spec("pytest") is not None
+        else:
+            is_installed = find_tool(item["id"]) is not None
+
+        if is_installed:
+            status = f"{GREEN}[READY]{RESET}"
+        else:
+            status = f"{YELLOW}[NOT INSTALLED]{RESET}"
+            missing_tools.append(item)
+
+        print(f"• {BOLD}{item['name']:<12}{RESET} {status}")
+        print(f"  Benefit: {item['benefit']}")
+        if not is_installed:
+            print(f"  Command: {' '.join(item['install_cmd'])}")
+        print()
+
+    if not missing_tools:
+        print(f"{GREEN}{BOLD}✓ Perfect! All recommended quality tools are installed and ready.{RESET}\n")
+        return
+
+    print(f"{BOLD}{YELLOW}Found {len(missing_tools)} optional tool(s) that can be installed.{RESET}")
+    print("You can choose to install them now or skip (the suite will still run seamlessly).\n")
+    print("  [1] Install all missing tools automatically")
+    print("  [2] Select specific tools to install")
+    print("  [3] Skip and continue with current setup\n")
+
+    try:
+        choice = input("Enter choice [1-3] (default: 3): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nSkipped.")
+        return
+
+    if choice == "1":
+        for tool in missing_tools:
+            if tool["type"] == "npm" and not has_npm:
+                print(f"{YELLOW}[SKIP]{RESET} Node.js / npm not detected on system. Skipping {tool['name']}.")
+                continue
+            print(f"\n>> Installing {tool['name']}...")
+            code, out = run_cmd(tool["install_cmd"])
+            if code == 0:
+                print(f"  {GREEN}[SUCCESS]{RESET} {tool['name']} installed successfully.")
+            else:
+                print(f"  {RED}[ERROR]{RESET} Installation failed: {out[:200]}")
+        print(f"\n{GREEN}Setup complete!{RESET}\n")
+    elif choice == "2":
+        for tool in missing_tools:
+            if tool["type"] == "npm" and not has_npm:
+                print(f"{YELLOW}[NOTICE]{RESET} {tool['name']} requires npm, which is not installed.")
+                continue
+            ans = input(f"Install {tool['name']} ({tool['benefit']})? [y/N]: ").strip().lower()
+            if ans == "y":
+                print(f">> Installing {tool['name']}...")
+                code, out = run_cmd(tool["install_cmd"])
+                if code == 0:
+                    print(f"  {GREEN}[SUCCESS]{RESET} {tool['name']} installed.")
+                else:
+                    print(f"  {RED}[ERROR]{RESET} Failed: {out[:200]}")
+        print(f"\n{GREEN}Custom setup complete!{RESET}\n")
+    else:
+        print("\nSkipping installation. Graceful fallbacks will handle missing tools.\n")
+
+# ==============================================================================
 # 1. Python Engine (Syntax, Ruff, Pytest)
 # ==============================================================================
 def check_python(repo_path, fix=False):
@@ -214,7 +325,6 @@ def check_broken_assets(repo_path):
                     continue
                 target = target.strip()
 
-                # Ignore external URLs, protocols, anchors, template expressions
                 if target.startswith(("http://", "https://", "//", "mailto:", "tel:", "data:", "#", "javascript:", "{")) or "${" in target:
                     continue
 
@@ -255,7 +365,6 @@ def check_secret_leaks(repo_path):
     leak_findings = []
     scanned_count = 0
 
-    # Inspect for sensitive key files
     dangerous_files = list(repo_path.glob(".env")) + list(repo_path.glob("*.pem")) + list(repo_path.glob("id_rsa*"))
     for df in dangerous_files:
         if df.is_file() and not df.name.endswith(".example"):
@@ -326,7 +435,12 @@ def main():
     parser.add_argument("path", nargs="?", default=".", help="Target directory or repository path (default: .)")
     parser.add_argument("--all", action="store_true", help="Batch scan all child repositories")
     parser.add_argument("--fix", action="store_true", help="Auto-fix autofixable lints (Ruff, Biome)")
+    parser.add_argument("--doctor", "--setup", dest="setup", action="store_true", help="Check and install recommended quality tools interactively")
     args = parser.parse_args()
+
+    if args.setup:
+        run_doctor()
+        return
 
     target = Path(args.path).resolve()
 

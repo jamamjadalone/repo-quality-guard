@@ -27,10 +27,24 @@ python repo_quality_guard.py --all
 
 # 4. Auto-fix autofixable lints (Ruff & Biome)
 python repo_quality_guard.py . --fix
+
+# 5. Interactive Tool Doctor (Check & Install Missing Tools)
+python repo_quality_guard.py --doctor
 ```
 
 ### Windows 1-Click Run
 Double-click `run_audit.bat` to launch the interactive audit console.
+
+---
+
+## Interactive Tool Doctor & Setup Helper
+
+Repo Quality Guard includes an interactive **Tool Doctor** (`--doctor` or `--setup`).
+
+It scans your system for recommended quality tools, explains the specific engineering benefit of each tool, and gives you a clear choice:
+1. **Auto-Install Missing Tools**: Automatically installs recommended pip and npm packages.
+2. **Selective Install**: Interactively asks which specific tools you wish to enable.
+3. **Graceful Skip**: Continue with your existing tools without installing anything.
 
 ---
 
