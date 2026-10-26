@@ -1,37 +1,47 @@
 @echo off
 chcp 65001 >nul
 title Repo Quality Guard
-echo ======================================================================
-echo           REPO QUALITY GUARD — 6-IN-1 AUDIT SUITE
-echo ======================================================================
+cls
+echo ========================================================================
+echo     REPO QUALITY GUARD — 1-Click Code Quality & Health Auditor
+echo ========================================================================
 echo.
-echo [1] Run Health Audit on Current Directory
-echo [2] Run Health Audit with Auto-Fix (--fix)
-echo [3] Run Multi-Repo Batch Audit (--all)
-echo [4] Audit Custom Path
-echo [5] Tool Doctor & Setup Helper (Check & Install Missing Tools)
-echo [6] Exit
+echo   What do you want to test today?
 echo.
-set /p choice="Enter choice [1-6]: "
+echo   [1] QUICK AUDIT: Test current folder (Fast & Safe, Read-Only)
+echo   [2] AUTO-FIX:    Test & automatically fix format errors (--fix)
+echo   [3] MULTI-REPO:  Scan all projects in this workspace at once
+echo   [4] CUSTOM:      Enter any specific folder path on your PC
+echo   [5] TOOL DOCTOR: Check missing tools & install them interactively
+echo   [6] EXIT
+echo.
+echo ========================================================================
+echo.
+set /p choice="Enter your choice [1-6]: "
 
 if "%choice%"=="1" (
+    echo.
     python "%~dp0repo_quality_guard.py" "%~dp0."
     goto done
 )
 if "%choice%"=="2" (
+    echo.
     python "%~dp0repo_quality_guard.py" "%~dp0." --fix
     goto done
 )
 if "%choice%"=="3" (
+    echo.
     python "%~dp0repo_quality_guard.py" "%~dp0." --all
     goto done
 )
 if "%choice%"=="4" (
-    set /p custom="Enter target folder path: "
+    echo.
+    set /p custom="Enter target folder path to test: "
     python "%~dp0repo_quality_guard.py" "%custom%"
     goto done
 )
 if "%choice%"=="5" (
+    echo.
     python "%~dp0repo_quality_guard.py" --doctor
     goto done
 )
@@ -41,4 +51,5 @@ if "%choice%"=="6" (
 
 :done
 echo.
-pause
+echo Audit completed. Press any key to close...
+pause >nul

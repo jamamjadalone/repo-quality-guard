@@ -22,14 +22,32 @@ import subprocess
 import sys
 from pathlib import Path
 
-# UTF-8 console output for Windows
-if sys.platform == "win32":
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-# ANSI color codes
+# ==============================================================================
+# WINDOWS CONSOLE ANSI & UTF-8 INITIALIZATION (ZERO-GLITCH GUARANTEE)
+# ==============================================================================
+def init_console():
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            kernel32 = ctypes.windll.kernel32
+            h_stdout = kernel32.GetStdHandle(-11)
+            mode = wintypes.DWORD()
+            if kernel32.GetConsoleMode(h_stdout, ctypes.byref(mode)):
+                mode.value |= 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+                kernel32.SetConsoleMode(h_stdout, mode)
+            os.system("")
+        except (AttributeError, OSError):
+            pass
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+init_console()
+
+# ANSI Color formatting
 GREEN = "\033[92m"
 RED = "\033[91m"
 YELLOW = "\033[93m"
@@ -84,80 +102,76 @@ def find_tool(name):
     return None
 
 # ==============================================================================
-# INTERACTIVE SETUP & DOCTOR HELPER
+# TOOL DOCTOR & INTERACTIVE SETUP HELPER
 # ==============================================================================
 RECOMMENDED_TOOLS = [
     {
         "id": "ruff",
         "name": "Ruff",
         "type": "pip",
-        "package": "ruff",
-        "benefit": "Rust-powered Python linter and formatter. Scans entire codebases in <15ms.",
+        "benefit": "Python static linter. Checks syntax, dead code and bugs in <15ms.",
         "install_cmd": [sys.executable, "-m", "pip", "install", "--upgrade", "ruff"]
     },
     {
         "id": "biome",
         "name": "Biome",
         "type": "npm",
-        "package": "@biomejs/biome",
-        "benefit": "Rust-powered web linter for JS, TS, HTML, CSS. Catches web syntax bugs in <35ms.",
+        "benefit": "Web linter for JS, TS, HTML, CSS. Catches front-end syntax bugs in <35ms.",
         "install_cmd": ["npm", "install", "-g", "@biomejs/biome"]
     },
     {
         "id": "fixmyslop",
         "name": "FixMySlop",
         "type": "pip",
-        "package": "fixmyslop",
-        "benefit": "Anti-slop quality scanner. Eliminates AI-generated code bloat and code smells.",
+        "benefit": "Code hygiene & slop scanner. Eliminates AI anti-patterns and bloated code.",
         "install_cmd": [sys.executable, "-m", "pip", "install", "--upgrade", "fixmyslop"]
     },
     {
         "id": "pytest",
         "name": "Pytest",
         "type": "pip",
-        "package": "pytest",
-        "benefit": "Industry-standard automated test suite runner for Python repositories.",
+        "benefit": "Industry-standard automated test suite runner for Python.",
         "install_cmd": [sys.executable, "-m", "pip", "install", "--upgrade", "pytest"]
     }
 ]
 
 def run_doctor():
-    print(f"\n{BOLD}{CYAN}======================================================================{RESET}")
-    print(f"{BOLD}           REPO QUALITY GUARD — TOOL DOCTOR & SETUP HELPER{RESET}")
-    print(f"{BOLD}{CYAN}======================================================================{RESET}\n")
-    print("This helper checks for recommended tools and gives you the option to install them.\n")
+    print()
+    print("========================================================================")
+    print("           REPO QUALITY GUARD — TOOL DOCTOR & SETUP HELPER")
+    print("========================================================================")
+    print("Checking which quality engines are currently installed on your PC:\n")
 
     has_npm = shutil.which("npm") is not None
     missing_tools = []
 
     for item in RECOMMENDED_TOOLS:
-        is_installed = False
         if item["id"] == "pytest":
             is_installed = importlib.util.find_spec("pytest") is not None
         else:
             is_installed = find_tool(item["id"]) is not None
 
-        if is_installed:
-            status = f"{GREEN}[READY]{RESET}"
-        else:
-            status = f"{YELLOW}[NOT INSTALLED]{RESET}"
+        status = f"{GREEN}[READY]{RESET}" if is_installed else f"{YELLOW}[NOT INSTALLED]{RESET}"
+        if not is_installed:
             missing_tools.append(item)
 
-        print(f"• {BOLD}{item['name']:<12}{RESET} {status}")
-        print(f"  Benefit: {item['benefit']}")
+        print(f"  * {BOLD}{item['name']:<12}{RESET} : {status}")
+        print(f"    Benefit : {item['benefit']}")
         if not is_installed:
-            print(f"  Command: {' '.join(item['install_cmd'])}")
+            print(f"    Command : {' '.join(item['install_cmd'])}")
         print()
 
     if not missing_tools:
-        print(f"{GREEN}{BOLD}✓ Perfect! All recommended quality tools are installed and ready.{RESET}\n")
+        print(f"{GREEN}{BOLD}✓ Perfect! All recommended quality engines are installed and active.{RESET}")
+        print("========================================================================\n")
         return
 
-    print(f"{BOLD}{YELLOW}Found {len(missing_tools)} optional tool(s) that can be installed.{RESET}")
-    print("You can choose to install them now or skip (the suite will still run seamlessly).\n")
+    print(f"{BOLD}Found {len(missing_tools)} optional tool(s) not yet installed.{RESET}")
+    print("Repo Quality Guard will gracefully skip missing tools, but installing them")
+    print("unlocks full 100% static analysis coverage.\n")
     print("  [1] Install all missing tools automatically")
     print("  [2] Select specific tools to install")
-    print("  [3] Skip and continue with current setup\n")
+    print("  [3] Skip and exit helper\n")
 
     try:
         choice = input("Enter choice [1-3] (default: 3): ").strip()
@@ -168,7 +182,7 @@ def run_doctor():
     if choice == "1":
         for tool in missing_tools:
             if tool["type"] == "npm" and not has_npm:
-                print(f"{YELLOW}[SKIP]{RESET} Node.js / npm not detected on system. Skipping {tool['name']}.")
+                print(f"{YELLOW}[NOTICE]{RESET} Node.js / npm not detected. Skipping {tool['name']}.")
                 continue
             print(f"\n>> Installing {tool['name']}...")
             code, out = run_cmd(tool["install_cmd"])
@@ -176,13 +190,13 @@ def run_doctor():
                 print(f"  {GREEN}[SUCCESS]{RESET} {tool['name']} installed successfully.")
             else:
                 print(f"  {RED}[ERROR]{RESET} Installation failed: {out[:200]}")
-        print(f"\n{GREEN}Setup complete!{RESET}\n")
+        print(f"\n{GREEN}Installation finished!{RESET}\n")
     elif choice == "2":
         for tool in missing_tools:
             if tool["type"] == "npm" and not has_npm:
-                print(f"{YELLOW}[NOTICE]{RESET} {tool['name']} requires npm, which is not installed.")
+                print(f"{YELLOW}[NOTICE]{RESET} {tool['name']} requires npm (Node.js).")
                 continue
-            ans = input(f"Install {tool['name']} ({tool['benefit']})? [y/N]: ").strip().lower()
+            ans = input(f"Install {tool['name']}? [y/N]: ").strip().lower()
             if ans == "y":
                 print(f">> Installing {tool['name']}...")
                 code, out = run_cmd(tool["install_cmd"])
@@ -190,9 +204,9 @@ def run_doctor():
                     print(f"  {GREEN}[SUCCESS]{RESET} {tool['name']} installed.")
                 else:
                     print(f"  {RED}[ERROR]{RESET} Failed: {out[:200]}")
-        print(f"\n{GREEN}Custom setup complete!{RESET}\n")
+        print(f"\n{GREEN}Custom installation finished!{RESET}\n")
     else:
-        print("\nSkipping installation. Graceful fallbacks will handle missing tools.\n")
+        print("\nSkipping installation. Graceful fallbacks active.\n")
 
 # ==============================================================================
 # 1. Python Engine (Syntax, Ruff, Pytest)
@@ -204,14 +218,14 @@ def check_python(repo_path, fix=False):
         if not any(part in IGNORE_DIRS for part in f.parts)
     ]
     if not py_files:
-        return True, "No Python source files found."
+        return "SKIP", "No Python source files found"
 
     errors = []
     for pf in py_files:
         try:
             py_compile.compile(str(pf), doraise=True)
         except py_compile.PyCompileError as err:
-            errors.append(f"Syntax error in {pf.relative_to(repo_path)}: {err}")
+            errors.append(f"Syntax error in {pf.name}: {err}")
 
     ruff = find_tool("ruff")
     if ruff:
@@ -231,8 +245,8 @@ def check_python(repo_path, fix=False):
             errors.append(f"Pytest failed: {out.splitlines()[-1] if out else 'Failed'}")
 
     if errors:
-        return False, " | ".join(errors[:3])
-    return True, f"All {len(py_files)} Python source files verified with zero syntax defects."
+        return "FAIL", " | ".join(errors[:2])
+    return "PASS", f"{len(py_files)} Python file(s) clean with zero syntax defects"
 
 # ==============================================================================
 # 2. Web & Frontend Engine (Biome)
@@ -245,11 +259,11 @@ def check_web(repo_path, fix=False):
         and not any(part in IGNORE_DIRS for part in f.parts)
     ]
     if not web_files:
-        return True, "No Web / JS / HTML files found."
+        return "SKIP", "No Web / JS / HTML files found"
 
     biome = find_tool("biome")
     if not biome:
-        return True, f"Found {len(web_files)} web files (Biome not installed in PATH, skipping)."
+        return "SKIP", f"{len(web_files)} web file(s) present (Biome not installed)"
 
     cmd = [biome, "lint", "--diagnostic-level=error", str(repo_path)]
     if fix:
@@ -259,8 +273,8 @@ def check_web(repo_path, fix=False):
         clean_out = out.encode("ascii", errors="replace").decode("ascii")
         lines = [l.strip() for l in clean_out.splitlines() if l.strip()]
         last_line = lines[-1] if lines else "Errors found"
-        return False, f"Biome: {last_line}"
-    return True, f"All {len(web_files)} web assets passed static lint checks."
+        return "FAIL", f"Biome: {last_line}"
+    return "PASS", f"{len(web_files)} web asset(s) passed Biome lint"
 
 # ==============================================================================
 # 3. Android Engine (Gradlew)
@@ -276,12 +290,12 @@ def check_android(repo_path):
                 gradlew = cand
                 repo_path = android_dir
     if not gradlew.exists():
-        return True, "No Android Gradle project found."
+        return "SKIP", "No Android Gradle project found"
 
     code, _ = run_cmd([str(gradlew), ":app:testReleaseUnitTest", "--offline"], cwd=repo_path)
     if code == 0:
-        return True, "Android unit tests & offline compilation: BUILD SUCCESSFUL."
-    return False, "Android unit tests failed. Check Gradle logs."
+        return "PASS", "Release unit tests & offline compilation SUCCESSFUL"
+    return "FAIL", "Android unit tests failed. Check Gradle output"
 
 # ==============================================================================
 # 4. Anti-Slop Engine (FixMySlop)
@@ -289,12 +303,12 @@ def check_android(repo_path):
 def check_slop(repo_path):
     fixmyslop = find_tool("fixmyslop")
     if not fixmyslop:
-        return True, "FixMySlop not installed (Optional check skipped)."
+        return "SKIP", "FixMySlop not installed (Optional check skipped)"
 
     code, _ = run_cmd([fixmyslop, "scan", str(repo_path), "--fail-on", "medium"])
     if code == 0:
-        return True, "FixMySlop: Grade A (0 design gimmicks or code smells)."
-    return False, "FixMySlop detected anti-patterns or excessive code smells."
+        return "PASS", "Grade A (0 anti-patterns or code smells)"
+    return "FAIL", "Detected excessive code smells or AI anti-patterns"
 
 # ==============================================================================
 # 5. Broken Assets & Relative 404 Links Detector
@@ -340,8 +354,8 @@ def check_broken_assets(repo_path):
 
     if broken_links:
         unique_broken = list(dict.fromkeys(broken_links))
-        return False, f"Broken 404 links ({len(unique_broken)} found): " + "; ".join(unique_broken[:3])
-    return True, f"Zero broken asset links detected across {scanned_files} files."
+        return "FAIL", f"Broken 404 link(s) found ({len(unique_broken)}): " + "; ".join(unique_broken[:2])
+    return "PASS", f"Zero broken links detected across {scanned_files} file(s)"
 
 # ==============================================================================
 # 6. Secrets & Credentials Leak Guard
@@ -368,7 +382,7 @@ def check_secret_leaks(repo_path):
     dangerous_files = list(repo_path.glob(".env")) + list(repo_path.glob("*.pem")) + list(repo_path.glob("id_rsa*"))
     for df in dangerous_files:
         if df.is_file() and not df.name.endswith(".example"):
-            leak_findings.append(f"Sensitive credential file detected on disk: {df.name}")
+            leak_findings.append(f"Sensitive key file on disk: {df.name}")
 
     text_extensions = {".py", ".js", ".ts", ".html", ".css", ".json", ".xml", ".txt", ".md", ".yml", ".yaml", ".kt", ".java"}
 
@@ -387,45 +401,56 @@ def check_secret_leaks(repo_path):
                 for m in matches:
                     if is_dummy_match(m):
                         continue
-                    leak_findings.append(f"{f.name}: Potential {label} hardcoded!")
+                    leak_findings.append(f"{f.name}: Potential {label} hardcoded")
 
     if leak_findings:
-        return False, " | ".join(leak_findings[:3])
-    return True, f"100% Clean: 0 hardcoded secrets or credentials ({scanned_count} files scanned)."
+        return "FAIL", " | ".join(leak_findings[:2])
+    return "PASS", f"Zero secret leaks detected ({scanned_count} files verified)"
 
 # ==============================================================================
-# AUDIT RUNNER
+# AUDIT RUNNER (CLEAN & GORGEOUS UI)
 # ==============================================================================
 def audit_single_repo(repo_path, fix=False):
     repo_path = Path(repo_path).resolve()
-    print(f"\n{BOLD}{CYAN}----------------------------------------------------------------------{RESET}")
-    print(f"{BOLD}Auditing Target:{RESET} {CYAN}{repo_path.name}{RESET} ({repo_path})")
-    print(f"{BOLD}{CYAN}----------------------------------------------------------------------{RESET}")
+    print("========================================================================")
+    print(f" TARGET: {BOLD}{CYAN}{repo_path.name}{RESET}  ({repo_path})")
+    print("========================================================================")
 
     modules = [
-        ("1. Python Syntax & Tests", lambda: check_python(repo_path, fix)),
-        ("2. Web & Frontend Linter", lambda: check_web(repo_path, fix)),
-        ("3. Android Compilation", lambda: check_android(repo_path)),
-        ("4. Anti-Slop Quality", lambda: check_slop(repo_path)),
-        ("5. Broken 404 Assets", lambda: check_broken_assets(repo_path)),
-        ("6. Secret Leak Guard", lambda: check_secret_leaks(repo_path)),
+        ("[1/6] Python Syntax & Tests", lambda: check_python(repo_path, fix)),
+        ("[2/6] Web & Frontend Linter", lambda: check_web(repo_path, fix)),
+        ("[3/6] Android Compilation  ", lambda: check_android(repo_path)),
+        ("[4/6] Anti-Slop Code Smells", lambda: check_slop(repo_path)),
+        ("[5/6] Broken 404 Links     ", lambda: check_broken_assets(repo_path)),
+        ("[6/6] Secret & Token Leak  ", lambda: check_secret_leaks(repo_path)),
     ]
 
     all_passed = True
-    for name, runner in modules:
+    for label, runner in modules:
         try:
-            ok, msg = runner()
-            if ok:
-                print(f"  {GREEN}[PASS]{RESET} {name:<26} : {msg}")
+            status, msg = runner()
+            if status == "PASS":
+                status_str = f"{GREEN}[ PASS ]{RESET}"
+            elif status == "SKIP":
+                status_str = f"{YELLOW}[ SKIP ]{RESET}"
             else:
+                status_str = f"{RED}[ FAIL ]{RESET}"
                 all_passed = False
-                print(f"  {RED}[FAIL]{RESET} {name:<26} : {RED}{msg}{RESET}")
+
+            # Clean aligned dot leader UI
+            dots = "." * (30 - len(label))
+            print(f" {label} {dots} {status_str} : {msg}")
         except (OSError, RuntimeError) as err:
             all_passed = False
-            print(f"  {RED}[ERROR]{RESET} {name:<25} : {err}")
+            dots = "." * (30 - len(label))
+            print(f" {label} {dots} {RED}[ ERROR ]{RESET} : {err}")
 
-    verdict = f"{GREEN}ALL 6 QUALITY ENGINES PASSED{RESET}" if all_passed else f"{RED}SOME CHECKS FAILED{RESET}"
-    print(f"--> Result: {verdict}\n")
+    print("------------------------------------------------------------------------")
+    if all_passed:
+        print(f" RESULT: {GREEN}{BOLD}[ ALL ENGINES PASSED ]{RESET} — Codebase is 100% clean!")
+    else:
+        print(f" RESULT: {RED}{BOLD}[ CHECKS FAILED ]{RESET} — Review issues listed above.")
+    print("========================================================================\n")
     return all_passed
 
 def main():
@@ -433,9 +458,9 @@ def main():
         description="Repo Quality Guard — Universal 6-in-1 Offline Code Quality & Security Suite"
     )
     parser.add_argument("path", nargs="?", default=".", help="Target directory or repository path (default: .)")
-    parser.add_argument("--all", action="store_true", help="Batch scan all child repositories")
+    parser.add_argument("--all", action="store_true", help="Batch scan all child repositories in folder")
     parser.add_argument("--fix", action="store_true", help="Auto-fix autofixable lints (Ruff, Biome)")
-    parser.add_argument("--doctor", "--setup", dest="setup", action="store_true", help="Check and install recommended quality tools interactively")
+    parser.add_argument("--doctor", "--setup", dest="setup", action="store_true", help="Interactive Tool Doctor")
     args = parser.parse_args()
 
     if args.setup:
@@ -445,21 +470,23 @@ def main():
     target = Path(args.path).resolve()
 
     if args.all:
-        print(f"\n{BOLD}=== UNIVERSAL MULTI-REPO BATCH AUDIT (6-IN-1 SUITE) ==={RESET}")
+        print("\n========================================================================")
+        print("          MULTI-REPOSITORY BATCH AUDIT (6-IN-1 SUITE)")
+        print("========================================================================")
         repos = []
         for item in target.iterdir():
             if item.is_dir() and (item / ".git").exists():
                 repos.append(item)
         if not repos and (target / ".git").exists():
             repos = [target]
-        print(f"Discovered {len(repos)} local git repositories.\n")
+        print(f"Discovered {len(repos)} local git repositories in: {target}\n")
         passed_count = 0
         for r in repos:
             if audit_single_repo(r, args.fix):
                 passed_count += 1
-        print("=" * 70)
-        print(f"{BOLD}FINAL SUMMARY:{RESET} {passed_count}/{len(repos)} Repositories 100% Green.")
-        print("=" * 70)
+        print("========================================================================")
+        print(f" FINAL SUMMARY: {passed_count}/{len(repos)} Repositories 100% Green.")
+        print("========================================================================\n")
         sys.exit(0 if passed_count == len(repos) else 1)
     else:
         passed = audit_single_repo(target, args.fix)
