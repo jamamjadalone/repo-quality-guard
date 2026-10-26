@@ -229,10 +229,10 @@ def check_python(repo_path, fix=False):
 
     ruff = find_tool("ruff")
     if ruff:
-        cmd = [ruff, "check", str(repo_path)]
+        cmd = [ruff, "check", "."]
         if fix:
             cmd.append("--fix")
-        code, out = run_cmd(cmd)
+        code, out = run_cmd(cmd, cwd=repo_path)
         if code != 0 and out:
             lines = [l for l in out.splitlines() if "error:" in l.lower() or "found" in l.lower()]
             if lines:
@@ -369,10 +369,13 @@ def check_broken_assets(repo_path):
                 if any(clean_target.startswith(m) for m in ("image/", "video/", "audio/", "text/", "application/", "font/")):
                     continue
 
-                resolved_relative = (f.parent / clean_target).resolve()
-                resolved_root = (repo_path / clean_target.lstrip("/")).resolve()
+                rel_path = clean_target.lstrip("/\\")
+                resolved_relative = (f.parent / rel_path).resolve()
+                resolved_root = (repo_path / rel_path).resolve()
+                resolved_public = (f.parent / "public" / rel_path).resolve()
+                resolved_root_public = (repo_path / "public" / rel_path).resolve()
 
-                if not (resolved_relative.exists() or resolved_root.exists()) and not clean_target.startswith(("/api", "api/")):
+                if not (resolved_relative.exists() or resolved_root.exists() or resolved_public.exists() or resolved_root_public.exists()) and not clean_target.startswith(("/api", "api/")):
                     broken_links.append(f"{f.name} -> '{target}'")
 
     if broken_links:
