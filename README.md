@@ -105,6 +105,33 @@ It scans your system for recommended tools, explains the specific engineering be
 
 ---
 
+## Production Security Audit Matrix (5-Tier Threat Defense)
+
+Repo Quality Guard integrates an industry-standard, 5-tier threat mitigation framework designed to eliminate high-risk vulnerabilities before deployment:
+
+### 1. Secret Leak Prevention
+- **Automated Scan**: Scans all commits and code for hardcoded passwords, private keys, database connection strings, and API tokens.
+- **Environment Isolation**: Ensures client-side frameworks do not expose sensitive environment variables, and verifies `.gitignore` / `.env.example` compliance.
+
+### 2. Sensitive Data & PII Hygiene
+- **Data Flow Mapping**: Tracks entry points of personal identifiable information (emails, biometric secrets, storage keys).
+- **Zero-Log Leakage**: Enforces automated redaction (`[REDACTED]`) on runtime loggers, error handlers, and console prints.
+- **Cryptographic Standards**: Mandates hardware-backed keystores, salted PBKDF2/Argon2/bcrypt hashing, and authenticated AES-256-GCM encryption.
+
+### 3. Pre-Deploy Production Hygiene
+- **Debug Cleanup**: Eliminates residual debug endpoints (`/debug`, `/test`), verbose stack traces, and test-only bypasses.
+- **Transport Security**: Mandates TLS 1.3 encryption on network communications and strict rate-limiting on authentication entry points.
+
+### 4. Logic & Input Sanitization
+- **Strict Parameterization**: Replaces dynamic string concatenation with parameterized SQL and prepared queries to prevent SQL injection.
+- **XSS & Path Traversal Immunity**: Enforces context-aware input escaping and strict filename sanitization (`File(name).name`) on file uploads and imports.
+
+### 5. Adversarial Threat Modeling
+- **Access Control Verification**: Eliminates Insecure Direct Object References (IDOR) by validating resource ownership server-side.
+- **Privilege Separation**: Prevents privilege escalation by enforcing strict authorization boundaries across all API endpoints and background tasks.
+
+---
+
 ## Why Repo Quality Guard?
 
 - **Low-Spec Friendly**: Designed to run seamlessly on machines with limited RAM (4GB–8GB) where heavy Docker containers or browser-based test runners choke system resources.
