@@ -5,9 +5,9 @@
 [![Rust-Powered Speed](https://img.shields.io/badge/Speed-%3C50ms-purple.svg)](#credits--built-with)
 [![100% Offline](https://img.shields.io/badge/Architecture-100%25%20Offline-blue.svg)](#why-repo-quality-guard)
 
-**Repo Quality Guard** is a lightweight, zero-telemetry, 6-in-1 repository health and pre-push verification tool for software developers.
+**Repo Quality Guard** is a lightweight, zero-telemetry, **8-in-1 repository health and pre-push verification tool** for software developers.
 
-It unifies syntax checking, Rust-powered static analysis, unit testing, 404 broken asset link scanning, anti-slop code smells, and pre-commit secret leak prevention into a single command that runs in **under 2 seconds** with **zero RAM overhead**.
+It unifies syntax checking, Rust-powered static analysis, unit testing, 404 broken asset link scanning, anti-slop code smells, pre-commit secret leak prevention, **Rule 13 competitor trademark detection**, and **Android manifest security audits** into a single command that runs in **under 2 seconds** with **zero RAM overhead**.
 
 ---
 
@@ -34,7 +34,28 @@ Double-click `run_audit.bat` and press **`[1]`** to audit that repository in 2 s
 
 ---
 
-### Scenario 3: Automated GitHub CI (Run on Every Git Push)
+### Scenario 3: 1-Click Automated Git Pre-Commit Hook
+Prevent secrets, syntax errors, or competitor trademarks from ever being committed:
+```bash
+python repo_quality_guard.py --install-hook "C:\Projects\MyProject"
+```
+This automatically installs `.git/hooks/pre-commit` into your repository. Whenever you or an AI agent runs `git commit`, the full 8-in-1 verification suite runs automatically and blocks any defective commit.
+
+---
+
+### Per-Project Configuration (`.guardrc.json`)
+Create an optional `.guardrc.json` file in your repository root to customize rules:
+```json
+{
+  "ignore_dirs": ["build_installer", "release-apk", "releases"],
+  "banned_trademarks": ["zapya", "shareit", "xender", "cleanmaster"],
+  "skip_engines": []
+}
+```
+
+---
+
+### Scenario 4: Automated GitHub CI (Run on Every Git Push)
 To automatically run Repo Quality Guard on GitHub whenever you push code or open a pull request, create `.github/workflows/quality.yml` in your repository:
 
 ```yaml
