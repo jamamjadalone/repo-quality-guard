@@ -1,5 +1,5 @@
 """
-Repo Quality Guard — 6-in-1 Offline Repository Health & Security Suite
+Repo Quality Guard — Universal 8-in-1 Offline Repository Health & Security Suite
 A lightweight, fast, zero-telemetry code quality, static analysis,
 and security guard for modern developers.
 
@@ -10,16 +10,20 @@ Engines:
 4. Anti-Slop: FixMySlop code smells and AI anti-pattern scanner
 5. Broken Assets: Relative 404 link and asset path detector
 6. Secret Guard: Pre-push API key, private token & credential leak detector
+7. Brand & Trademark Guard: Rule 13 compliance & competitor brand leak detector
+8. Android Manifest & Hardening Guard: Exported flags, debuggable, and component security
 """
 
 import argparse
 import importlib.util
+import json
 import os
 import py_compile
 import re
 import shutil
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -55,12 +59,39 @@ CYAN = "\033[96m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
 
-# Ignored directories
-IGNORE_DIRS = {
-    ".git", ".gradle", "build", "node_modules", "dist", ".cache",
-    "__pycache__", ".venv", "venv", ".idea", ".vscode", ".tox",
-    ".pytest_cache", ".ruff_cache", "target"
+# Default Configuration
+DEFAULT_CONFIG = {
+    "ignore_dirs": [
+        ".git", ".gradle", "build", "node_modules", "dist", ".cache",
+        "__pycache__", ".venv", "venv", ".idea", ".vscode", ".tox",
+        ".pytest_cache", ".ruff_cache", "target", "build_installer"
+    ],
+    "banned_trademarks": [
+        "zapya", "shareit", "truecaller", "cleanmaster", "quickpic", "xender"
+    ],
+    "skip_engines": []
 }
+
+def load_guard_config(repo_path):
+    config = {
+        "ignore_dirs": list(DEFAULT_CONFIG["ignore_dirs"]),
+        "banned_trademarks": list(DEFAULT_CONFIG["banned_trademarks"]),
+        "skip_engines": list(DEFAULT_CONFIG["skip_engines"])
+    }
+    rc_file = Path(repo_path) / ".guardrc.json"
+    if rc_file.is_file():
+        try:
+            with open(rc_file, "r", encoding="utf-8") as f:
+                user_conf = json.load(f)
+                if "ignore_dirs" in user_conf and isinstance(user_conf["ignore_dirs"], list):
+                    config["ignore_dirs"] = list(dict.fromkeys(config["ignore_dirs"] + user_conf["ignore_dirs"]))
+                if "banned_trademarks" in user_conf and isinstance(user_conf["banned_trademarks"], list):
+                    config["banned_trademarks"] = list(dict.fromkeys(config["banned_trademarks"] + user_conf["banned_trademarks"]))
+                if "skip_engines" in user_conf and isinstance(user_conf["skip_engines"], list):
+                    config["skip_engines"] = user_conf["skip_engines"]
+        except (json.JSONDecodeError, OSError):
+            pass
+    return config
 
 def run_cmd(cmd, cwd=None):
     try:
@@ -211,11 +242,12 @@ def run_doctor():
 # ==============================================================================
 # 1. Python Engine (Syntax, Ruff, Pytest)
 # ==============================================================================
-def check_python(repo_path, fix=False):
+def check_python(repo_path, config, fix=False):
     repo_path = Path(repo_path)
+    ignore_dirs = set(config.get("ignore_dirs", DEFAULT_CONFIG["ignore_dirs"]))
     py_files = [
         f for f in repo_path.rglob("*.py")
-        if not any(part in IGNORE_DIRS for part in f.parts)
+        if not any(part in ignore_dirs for part in f.parts)
     ]
     if not py_files:
         return "SKIP", "No Python source files found"
@@ -251,12 +283,13 @@ def check_python(repo_path, fix=False):
 # ==============================================================================
 # 2. Web & Frontend Engine (Biome)
 # ==============================================================================
-def check_web(repo_path, fix=False):
+def check_web(repo_path, config, fix=False):
     repo_path = Path(repo_path)
+    ignore_dirs = set(config.get("ignore_dirs", DEFAULT_CONFIG["ignore_dirs"]))
     web_files = [
         f for f in repo_path.rglob("*")
         if f.suffix.lower() in (".js", ".ts", ".html", ".css", ".json")
-        and not any(part in IGNORE_DIRS for part in f.parts)
+        and not any(part in ignore_dirs for part in f.parts)
     ]
     if not web_files:
         return "SKIP", "No Web / JS / HTML files found"
@@ -279,7 +312,7 @@ def check_web(repo_path, fix=False):
 # ==============================================================================
 # 3. Android Engine (Gradlew)
 # ==============================================================================
-def check_android(repo_path):
+def check_android(repo_path, config):
     repo_path = Path(repo_path)
     gradlew = repo_path / ("gradlew.bat" if os.name == "nt" else "gradlew")
     if not gradlew.exists():
@@ -300,7 +333,7 @@ def check_android(repo_path):
 # ==============================================================================
 # 4. Anti-Slop Engine (FixMySlop)
 # ==============================================================================
-def check_slop(repo_path):
+def check_slop(repo_path, config):
     fixmyslop = find_tool("fixmyslop")
     if not fixmyslop:
         return "SKIP", "FixMySlop not installed (Optional check skipped)"
@@ -318,14 +351,15 @@ LINK_ATTR_RE = re.compile(
     re.IGNORECASE
 )
 
-def check_broken_assets(repo_path):
+def check_broken_assets(repo_path, config):
     repo_path = Path(repo_path)
+    ignore_dirs = set(config.get("ignore_dirs", DEFAULT_CONFIG["ignore_dirs"]))
     broken_links = []
     scanned_files = 0
 
     for ext in ("*.html", "*.css", "*.js"):
         for f in repo_path.rglob(ext):
-            if any(part in IGNORE_DIRS for part in f.parts):
+            if any(part in ignore_dirs for part in f.parts):
                 continue
             scanned_files += 1
             try:
@@ -335,7 +369,6 @@ def check_broken_assets(repo_path):
 
             is_js = f.suffix.lower() == ".js"
             for match in LINK_ATTR_RE.finditer(content):
-                # In JS files, skip url(...) function calls like new URL(a.href)
                 if is_js and match.group(2) is not None:
                     continue
 
@@ -351,21 +384,17 @@ def check_broken_assets(repo_path):
                 if not clean_target:
                     continue
 
-                # Skip template tokens (e.g. __CATID__, {{ROOT}})
                 if "__" in clean_target or "{{" in clean_target or "}}" in clean_target:
                     continue
 
-                # Skip JS variable / property expressions
                 if re.match(r'^[a-zA-Z_$][a-zA-Z0-9_$]*\.(href|src|url)$', clean_target):
                     continue
 
-                # Must look like a real path or file (contains slash or valid file extension)
                 has_ext = bool(re.search(r'\.[a-zA-Z0-9]{1,8}$', clean_target))
                 has_slash = "/" in clean_target or "\\" in clean_target
                 if not (has_ext or has_slash):
                     continue
 
-                # Skip common MIME types
                 if any(clean_target.startswith(m) for m in ("image/", "video/", "audio/", "text/", "application/", "font/")):
                     continue
 
@@ -400,8 +429,9 @@ def is_dummy_match(text):
     low = text.lower()
     return "example" in low or "sample" in low or "dummy" in low or "test" in low
 
-def check_secret_leaks(repo_path):
+def check_secret_leaks(repo_path, config):
     repo_path = Path(repo_path)
+    ignore_dirs = set(config.get("ignore_dirs", DEFAULT_CONFIG["ignore_dirs"]))
     leak_findings = []
     scanned_count = 0
 
@@ -414,7 +444,7 @@ def check_secret_leaks(repo_path):
 
     for f in repo_path.rglob("*"):
         if f.is_file() and f.suffix.lower() in text_extensions:
-            if any(part in IGNORE_DIRS for part in f.parts):
+            if any(part in ignore_dirs for part in f.parts):
                 continue
             scanned_count += 1
             try:
@@ -434,21 +464,168 @@ def check_secret_leaks(repo_path):
     return "PASS", f"Zero secret leaks detected ({scanned_count} files verified)"
 
 # ==============================================================================
+# 7. Brand & Trademark Safety Guard (AS Studio Rule 13 Compliance)
+# ==============================================================================
+def check_trademarks(repo_path, config):
+    repo_path = Path(repo_path)
+    ignore_dirs = set(config.get("ignore_dirs", DEFAULT_CONFIG["ignore_dirs"]))
+    banned = config.get("banned_trademarks", DEFAULT_CONFIG["banned_trademarks"])
+    if not banned:
+        return "PASS", "No trademark filters configured"
+
+    patterns = [
+        (brand, re.compile(rf"\b{re.escape(brand)}\b", re.IGNORECASE))
+        for brand in banned
+    ]
+
+    code_extensions = {".kt", ".java", ".xml", ".py", ".js", ".ts", ".html", ".css", ".json"}
+    findings = []
+    scanned_count = 0
+
+    for f in repo_path.rglob("*"):
+        if f.is_file() and f.suffix.lower() in code_extensions:
+            if f.name == ".guardrc.json":
+                continue
+            if any(part in ignore_dirs for part in f.parts):
+                continue
+            scanned_count += 1
+            try:
+                lines = f.read_text(encoding="utf-8", errors="ignore").splitlines()
+            except (OSError, UnicodeDecodeError):
+                continue
+
+            for idx, line in enumerate(lines, start=1):
+                if "guard-ignore" in line or "fixmyslop-ignore" in line:
+                    continue
+                for brand, pat in patterns:
+                    if pat.search(line):
+                        findings.append(f"{f.name}:{idx} (contains '{brand}')")
+                        break
+                if len(findings) >= 5:
+                    break
+        if len(findings) >= 5:
+            break
+
+    if findings:
+        return "FAIL", f"Rule 13 violation ({len(findings)} found): " + "; ".join(findings[:2])
+    return "PASS", f"Zero competitor trademarks detected ({scanned_count} files verified)"
+
+# ==============================================================================
+# 8. Android Manifest & Hardening Guard
+# ==============================================================================
+def check_android_manifest(repo_path, config):
+    repo_path = Path(repo_path)
+    ignore_dirs = set(config.get("ignore_dirs", DEFAULT_CONFIG["ignore_dirs"]))
+    manifests = [
+        m for m in repo_path.rglob("AndroidManifest.xml")
+        if not any(part in ignore_dirs for part in m.parts)
+        and "intermediates" not in str(m)
+        and "build" not in str(m)
+    ]
+    if not manifests:
+        return "SKIP", "No Android Manifest found in project"
+
+    issues = []
+    ANDROID_NS = "http://schemas.android.com/apk/res/android"
+
+    for mf in manifests:
+        try:
+            tree = ET.parse(str(mf))
+            root = tree.getroot()
+            app = root.find("application")
+            if app is None:
+                continue
+
+            debuggable = app.attrib.get(f"{{{ANDROID_NS}}}debuggable")
+            if debuggable == "true":
+                issues.append(f"{mf.name}: android:debuggable='true' prohibited in production")
+
+            # Check explicit exported flags on components with intent-filter
+            for tag in ("activity", "service", "receiver"):
+                for comp in app.findall(tag):
+                    has_intent_filter = comp.find("intent-filter") is not None
+                    exported = comp.attrib.get(f"{{{ANDROID_NS}}}exported")
+                    comp_name = comp.attrib.get(f"{{{ANDROID_NS}}}name", tag).split(".")[-1]
+                    if has_intent_filter and exported is None:
+                        issues.append(f"{comp_name}: missing explicit android:exported (API 31+)")
+
+            # Check FileProvider security
+            for provider in app.findall("provider"):
+                exported = provider.attrib.get(f"{{{ANDROID_NS}}}exported")
+                prov_name = provider.attrib.get(f"{{{ANDROID_NS}}}name", "provider")
+                if exported == "true" and "FileProvider" in prov_name:
+                    issues.append(f"{prov_name}: FileProvider has exported='true' (Vulnerability)")
+        except (ET.ParseError, OSError) as e:
+            issues.append(f"Parse error in {mf.name}: {e}")
+
+    if issues:
+        return "FAIL", "; ".join(issues[:2])
+    return "PASS", f"Android Manifest security hardened ({len(manifests)} manifest verified)"
+
+# ==============================================================================
+# GIT HOOK INSTALLER
+# ==============================================================================
+def install_git_hook(repo_path):
+    repo_path = Path(repo_path).resolve()
+    git_dir = repo_path / ".git"
+    if not git_dir.is_dir():
+        if (repo_path.parent / ".git").is_dir():
+            git_dir = repo_path.parent / ".git"
+        else:
+            print(f"{RED}[ERROR]{RESET} No .git repository found in: {repo_path}")
+            return False
+
+    hooks_dir = git_dir / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    hook_file = hooks_dir / "pre-commit"
+
+    hook_content = (
+        "#!/usr/bin/env sh\n"
+        "# Repo Quality Guard Automated Pre-Commit Hook\n"
+        "echo '[Quality Guard] Running 8-in-1 repository health suite...'\n"
+        "python repo_quality_guard.py .\n"
+        "EXIT_CODE=$?\n"
+        "if [ $EXIT_CODE -ne 0 ]; then\n"
+        "  echo ''\n"
+        "  echo '❌ [BLOCKED] Pre-commit quality checks failed!'\n"
+        "  echo 'Please resolve the reported issues before committing.'\n"
+        "  exit 1\n"
+        "fi\n"
+        "echo '✅ [PASSED] Codebase is clean. Proceeding with commit.'\n"
+        "exit 0\n"
+    )
+
+    try:
+        hook_file.write_text(hook_content, encoding="utf-8", newline="\n")
+        if os.name != "nt":
+            hook_file.chmod(0o755)
+        print(f"\n{GREEN}{BOLD}[SUCCESS]{RESET} Git pre-commit hook installed successfully!")
+        print(f"Hook location: {CYAN}{hook_file}{RESET}\n")
+        return True
+    except OSError as err:
+        print(f"{RED}[ERROR]{RESET} Could not write git hook: {err}")
+        return False
+
+# ==============================================================================
 # AUDIT RUNNER (CLEAN & GORGEOUS UI)
 # ==============================================================================
 def audit_single_repo(repo_path, fix=False):
     repo_path = Path(repo_path).resolve()
+    config = load_guard_config(repo_path)
+
     print("========================================================================")
     print(f" TARGET: {BOLD}{CYAN}{repo_path.name}{RESET}  ({repo_path})")
     print("========================================================================")
 
     modules = [
-        ("[1/6] Python Syntax & Tests", lambda: check_python(repo_path, fix)),
-        ("[2/6] Web & Frontend Linter", lambda: check_web(repo_path, fix)),
-        ("[3/6] Android Compilation  ", lambda: check_android(repo_path)),
-        ("[4/6] Anti-Slop Code Smells", lambda: check_slop(repo_path)),
-        ("[5/6] Broken 404 Links     ", lambda: check_broken_assets(repo_path)),
-        ("[6/6] Secret & Token Leak  ", lambda: check_secret_leaks(repo_path)),
+        ("[1/8] Python Syntax & Tests", lambda: check_python(repo_path, config, fix)),
+        ("[2/8] Web & Frontend Linter", lambda: check_web(repo_path, config, fix)),
+        ("[3/8] Android Compilation  ", lambda: check_android(repo_path, config)),
+        ("[4/8] Anti-Slop Code Smells", lambda: check_slop(repo_path, config)),
+        ("[5/8] Broken 404 Links     ", lambda: check_broken_assets(repo_path, config)),
+        ("[6/8] Secret & Token Leak  ", lambda: check_secret_leaks(repo_path, config)),
+        ("[7/8] Rule 13 Trademark Safe", lambda: check_trademarks(repo_path, config)),
+        ("[8/8] Android Manifest Guard", lambda: check_android_manifest(repo_path, config)),
     ]
 
     all_passed = True
@@ -463,7 +640,6 @@ def audit_single_repo(repo_path, fix=False):
                 status_str = f"{RED}[ FAIL ]{RESET}"
                 all_passed = False
 
-            # Clean aligned dot leader UI
             dots = "." * (30 - len(label))
             print(f" {label} {dots} {status_str} : {msg}")
         except (OSError, RuntimeError) as err:
@@ -481,12 +657,13 @@ def audit_single_repo(repo_path, fix=False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Repo Quality Guard — Universal 6-in-1 Offline Code Quality & Security Suite"
+        description="Repo Quality Guard — Universal 8-in-1 Offline Code Quality & Security Suite"
     )
     parser.add_argument("path", nargs="?", default=".", help="Target directory or repository path (default: .)")
     parser.add_argument("--all", action="store_true", help="Batch scan all child repositories in folder")
     parser.add_argument("--fix", action="store_true", help="Auto-fix autofixable lints (Ruff, Biome)")
     parser.add_argument("--doctor", "--setup", dest="setup", action="store_true", help="Interactive Tool Doctor")
+    parser.add_argument("--install-hook", action="store_true", help="Install automated Git pre-commit hook")
     args = parser.parse_args()
 
     if args.setup:
@@ -495,9 +672,13 @@ def main():
 
     target = Path(args.path).resolve()
 
+    if args.install_hook:
+        install_git_hook(target)
+        return
+
     if args.all:
         print("\n========================================================================")
-        print("          MULTI-REPOSITORY BATCH AUDIT (6-IN-1 SUITE)")
+        print("          MULTI-REPOSITORY BATCH AUDIT (8-IN-1 SUITE)")
         print("========================================================================")
         repos = []
         for item in target.iterdir():
